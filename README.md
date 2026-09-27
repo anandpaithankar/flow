@@ -75,12 +75,12 @@ records your reason in the plan and the commit message.
 ```
 PROJ-123 (retry)  ~/src/repo-2 · feature/PROJ-123-retry
 
-   ✔ Ticket         fetched
-   ✔ Plan           5 steps
-   ○ Plan review    optional
- ▶ ◐ Build          3/5 steps · awaiting your accept
-   · Deslop
-   · Code review
+   ✔ Ticket         flow ticket         fetched
+   ✔ Plan           flow plan           5 steps
+   ○ Plan review    flow review --plan  optional
+ ▶ ◐ Build          flow build          3/5 steps · awaiting your accept
+   · Deslop         flow deslop
+   · Code review    flow review
    ...
  Next: flow accept   review the diff and commit it (step 3 done, not accepted yet)
 ```

@@ -1065,6 +1065,15 @@ def cmd_clear(args):
 
 DONE, ACTIVE, TODO, OPTIONAL, STALE = "done", "active", "todo", "optional", "stale"
 
+# The command that runs each stage, shown next to it in the tracker so the
+# tracker doubles as a cheat sheet, not just a progress bar.
+STAGE_CMD = {
+    "ticket": "flow ticket", "plan": "flow plan", "plan-review": "flow review --plan",
+    "build": "flow build", "deslop": "flow deslop", "review": "flow review",
+    "fix": "flow fix", "check": "flow check", "push": "git push",
+    "defend": "flow defend", "pr": "flow pr",
+}
+
 
 def fingerprint(root: Path, mb: str) -> str:
     return hashlib.sha256(diff_with_new_files(root, mb).encode()).hexdigest()[:16]
@@ -1239,7 +1248,8 @@ def render(state: dict, color: bool) -> str:
     for i, label, status, detail in state["stages"]:
         col, sym = icon[status]
         arrow = f"{c['cyan']}▶{c['reset']}" if i == nxt_id else " "
-        out.append(f" {arrow} {col}{sym}{c['reset']} {label:14} {c['dim']}{detail}{c['reset']}")
+        cmd = STAGE_CMD.get(i, "")
+        out.append(f" {arrow} {col}{sym}{c['reset']} {label:14} {c['dim']}{cmd:19}{detail}{c['reset']}")
     cmd, why = state["next"]
     out.append("")
     if cmd:
