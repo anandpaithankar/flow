@@ -591,6 +591,16 @@ def current_branch(root: Path) -> str | None:
         return None  # detached HEAD
 
 
+def repo_fingerprint(root: Path) -> str:
+    """Identifies the repository (not the clone): its root commit, so every
+    clone of the same repo agrees but unrelated repos don't, even without a
+    configured remote or with a differently-named one."""
+    try:
+        return git("rev-list", "--max-parents=0", "HEAD", cwd=root).split()[0]
+    except (GitError, IndexError):
+        return ""
+
+
 def toml_value(v) -> str:
     if isinstance(v, bool):
         return "true" if v else "false"
@@ -880,6 +890,14 @@ def cmd_start(args):
     hits = [t for t in find(key) if t["key"].lower() == key.lower()]
     if hits:                                   # resume an existing ticket here
         t = hits[0]
+        fp, known = repo_fingerprint(root), t.get("repo", "")
+        if known and fp and known != fp and not args.force:
+            die(f"{t['key']} belongs to a different repository than this clone "
+                f"(already linked to: {', '.join(short(d) for d in t.get('dirs', [])) or 'nowhere live'}).\n"
+                "Reusing a key across unrelated repos mixes their plan and history together.\n"
+                "Pick a different key, or if this is really the same ticket: flow start "
+                f"{t['key']} --force")
+        t["repo"] = known or fp
         for a in args.alias or []:
             if a not in t["aliases"]:
                 t["aliases"].append(a)
@@ -905,6 +923,7 @@ def cmd_start(args):
         "created": now(),
         "start_head": head,
         "start_branch": current_branch(root) or "",
+        "repo": repo_fingerprint(root),
     }
     link_repo(t, root)
     print(f"started {key} in {short(str(root))}")
@@ -1790,6 +1809,8 @@ def main() -> int:
     p.add_argument("--ticket", help="Jira key, if different from the task name")
     p.add_argument("--no-ticket", action="store_true", help="work without a Jira ticket")
     p.add_argument("--allow-dirty", action="store_true", help="start with uncommitted changes")
+    p.add_argument("--force", action="store_true",
+                   help="link even if this key was started in what looks like a different repo")
     p.set_defaults(fn=cmd_start)
 
     p = sub.add_parser("ls", help="list tickets")
