@@ -981,9 +981,16 @@ def cmd_init(args):
                 and "description: flow " in old.read_text():
             old.unlink()
             print(f"  removed old {short(str(old))}")
-    guard = ("This step needs fresh eyes. If this conversation already contains work "
-             "on this ticket, stop and tell me to run `flow {name}` in a new terminal "
-             "instead. ")
+    guard = ("This step needs fresh judgment, not fresh conversation. If this "
+             "conversation already contains work on this ticket, dispatch a subagent "
+             "with a clean context (e.g. the Agent/Task tool - give it only "
+             ".flow/ticket.md, .flow/plan.md, and the diff, not this conversation's "
+             "history) to make the judgment call cold: deslop's candidate list, or "
+             "defend's quiz questions. Then do the interactive part - what to apply, "
+             "answering questions - here with me yourself; a subagent runs to "
+             "completion and can't pause mid-run for my answers. If you can't "
+             "dispatch a subagent, stop and tell me to run `flow {name}` in a new "
+             "terminal instead. ")
     for name in SLASH_COMMANDS:
         p = cmds / f"flow-{name}.md"
         body = (f"---\ndescription: flow {name}\n---\n{MARKER}\n"

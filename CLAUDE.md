@@ -108,8 +108,12 @@ read-only behavior. Don't assume flags; check each tool's `--help`.
   `flow accept` instead, which works for every agent. `flow hook` remains
   as a no-op so an old hook config can't block edits.
 - `/flow-pr` is not a slash command: the PR review must not run inside the
-  working session. `/flow-deslop` and `/flow-defend` refuse if the
-  conversation already contains work on the ticket.
+  working session. `/flow-deslop` and `/flow-defend` need fresh eyes for
+  their judgment call if the conversation already contains work on the
+  ticket: dispatch a subagent with a clean context for that part (Claude
+  Code only - a subagent can't pause for the interactive part, so that
+  still happens in the working session), falling back to "run it in a new
+  terminal" for agents without subagents.
 - herdr integration and a TUI were deferred. If a TUI comes, build single
   screens over the same files (review triage first), not an app.
 - Reviewer choice is by model family, never by stats. Stats only collect
