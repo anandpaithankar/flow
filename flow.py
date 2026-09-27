@@ -82,9 +82,27 @@ test_cmd = ""
 #   diff_cmd = "git -c diff.external=difft diff {range}"
 diff_cmd = "git diff {range}"
 
-# Fetches a ticket into .flow/ticket.md; {key} becomes the ticket key.
-# Check the syntax for your acli version: acli jira workitem view --help
-ticket_cmd = "acli jira workitem view {key}"
+# Fetches a ticket into .flow/ticket.md; {key} becomes the ticket key. flow
+# tries `ticket_prefer` in order and runs the first one found on PATH; `flow
+# agents` shows which. Built in: acli (Jira via the Atlassian CLI).
+ticket_prefer = ["acli"]
+
+[tickets.acli]
+cmd = "acli jira workitem view {key}"
+
+# Add your own the same way you'd add an agent: anything that takes a key and
+# prints the ticket as text works, including a script that makes one call to
+# Glean, an internal API, or an MCP tool - flow only ever shells out to it,
+# once, before any agent starts, so plan/build/review all read the same
+# snapshot (flow itself never speaks MCP).
+#
+# [tickets.jira-mcp]
+# cmd = "jira-mcp-fetch {key}"
+#
+# [tickets.glean]
+# cmd = "glean search --format md {key}"
+#
+# One-off override: flow ticket --with glean
 
 # Which agent does which job. "auto" picks from what's installed:
 #   plan/build/fix/pr -> the first installed agent in `prefer`
@@ -515,6 +533,13 @@ BUILTIN_AGENTS = {
 FRESH_EYES = ("deslop", "defend")   # judged better without the builder's context
 ROLES = ("plan", "build", "deslop", "fix", "defend", "pr", "review")
 
+# Ticket fetchers: same pick-from-config pattern as agents, minus the
+# independence logic (there's only ever one fetch, so nothing to keep apart
+# from). Add more via [tickets.*] in config, same shape as [agents.*].
+BUILTIN_TICKET_FETCHERS = {
+    "acli": {"cmd": "acli jira workitem view {key}"},
+}
+
 # Default prompts from older versions that `flow init` may replace (sha256).
 OLD_DEFAULT_PROMPTS = {
     "defend": {
@@ -720,12 +745,42 @@ def link_repo(t: dict, root: Path) -> None:
     save_task(t)
 
 
-def fetch_ticket(t: dict) -> None:
-    tc = load_config().get("ticket_cmd", "")
-    if not tc:
-        print("no ticket_cmd configured; the agent will ask you to paste the ticket")
+def ticket_fetchers() -> dict[str, dict]:
+    """Built-in fetchers merged with [tickets.*] from config, plus a `legacy`
+    entry for a bare top-level ticket_cmd from an older config."""
+    cfg = load_config()
+    out = {k: dict(v) for k, v in BUILTIN_TICKET_FETCHERS.items()}
+    for name, spec in (cfg.get("tickets") or {}).items():
+        out[name] = dict(spec)
+    legacy = cfg.get("ticket_cmd")
+    if legacy and "legacy" not in out:
+        out["legacy"] = {"cmd": legacy}
+    return out
+
+
+def pick_ticket_fetcher(override: str | None = None) -> tuple[str, dict] | tuple[None, None]:
+    """Return (name, spec) to fetch a ticket with, or (None, None) if nothing
+    configured is installed."""
+    table = ticket_fetchers()
+    if override:
+        if override not in table:
+            die(f"unknown ticket fetcher {override!r}; known: "
+                f"{', '.join(table) or 'none configured'}")
+        return override, table[override]
+    cfg = load_config()
+    if cfg.get("ticket_cmd") and "tickets" not in cfg:
+        return "legacy", table["legacy"]        # untouched old config: same behavior as before
+    prefer = [n for n in cfg.get("ticket_prefer", list(BUILTIN_TICKET_FETCHERS)) if n in table]
+    ready = [n for n in prefer if installed(table[n])]
+    return (ready[0], table[ready[0]]) if ready else (None, None)
+
+
+def fetch_ticket(t: dict, override: str | None = None) -> None:
+    name, spec = pick_ticket_fetcher(override)
+    if not spec:
+        print("no ticket fetcher configured or installed; the agent will ask you to paste it")
         return
-    argv = [a.replace("{key}", t["ticket"]) for a in shlex.split(tc)]
+    argv = [a.replace("{key}", t["ticket"]) for a in shlex.split(spec["cmd"])]
     try:
         p = subprocess.run(argv, capture_output=True, text=True,
                            stdin=subprocess.DEVNULL, timeout=120)
@@ -737,7 +792,7 @@ def fetch_ticket(t: dict) -> None:
         print("the agent will ask you to paste the ticket")
         return
     (task_dir(t["key"]) / "ticket.md").write_text(
-        f"<!-- fetched {now()}: {shlex.join(argv)} -->\n\n" + ANSI.sub("", p.stdout))
+        f"<!-- fetched {now()} via {name}: {shlex.join(argv)} -->\n\n" + ANSI.sub("", p.stdout))
     print(f"fetched {t['ticket']} into .flow/ticket.md")
 
 
@@ -928,7 +983,7 @@ def cmd_start(args):
     link_repo(t, root)
     print(f"started {key} in {short(str(root))}")
     if t["ticket"]:
-        fetch_ticket(t)
+        fetch_ticket(t, args.with_)
     print()
     show_tracker(t, root, header=False)
 
@@ -937,7 +992,7 @@ def cmd_ticket(args):
     t = resolve(args.key) if args.key else current()[0]
     if not t["ticket"]:
         die("this task has no ticket")
-    fetch_ticket(t)
+    fetch_ticket(t, args.with_)
 
 
 def cmd_ls(args):
@@ -1576,6 +1631,14 @@ def cmd_agents(args):
     print("\nroles:")
     for role, (name, reason) in picks.items():
         print(f"  {role:7} -> {name:10} {reason}")
+    ftable = ticket_fetchers()
+    picked, _ = pick_ticket_fetcher()
+    print("\nticket fetchers:" if ftable else "\nticket fetchers: none configured")
+    for name, spec in ftable.items():
+        ok = installed(spec)
+        where = tool_version(spec) if ok else f"not installed ({binary(spec)})"
+        mark = " (selected)" if name == picked else ""
+        print(f"  {'+' if ok else '-'} {name:10} {where}{mark}")
     if args.models:
         oc = agents().get("opencode")
         if oc and installed(oc):
@@ -1811,6 +1874,7 @@ def main() -> int:
     p.add_argument("--allow-dirty", action="store_true", help="start with uncommitted changes")
     p.add_argument("--force", action="store_true",
                    help="link even if this key was started in what looks like a different repo")
+    p.add_argument("--with", dest="with_", metavar="FETCHER", help="use this ticket fetcher")
     p.set_defaults(fn=cmd_start)
 
     p = sub.add_parser("ls", help="list tickets")
@@ -1888,6 +1952,7 @@ def main() -> int:
 
     p = sub.add_parser("ticket", help="re-fetch the ticket")
     p.add_argument("key", nargs="?")
+    p.add_argument("--with", dest="with_", metavar="FETCHER", help="use this ticket fetcher")
     p.set_defaults(fn=cmd_ticket)
 
     p = sub.add_parser("prompt", help="print a prompt, for agents without slash commands")

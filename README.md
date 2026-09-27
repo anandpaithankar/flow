@@ -42,8 +42,9 @@ flow init
 It prints two optional additions: a shell function for switching tickets, and
 a Claude Code status line that always shows the next step.
 
-Then edit `~/.flow/config.toml`: set `test_cmd`, check `ticket_cmd` (Jira via
-`acli` by default), and run `flow agents` to see which agent gets each job.
+Then edit `~/.flow/config.toml`: set `test_cmd`, check `ticket_prefer` (Jira
+via `acli` by default), and run `flow agents` to see which agent, and which
+ticket fetcher, gets the job.
 
 ## A ticket, start to finish
 
@@ -116,6 +117,22 @@ prompt_prefix = "Use your code-review skill for this. Report findings in the for
 Use one for a single run with `--with NAME`, or set it in `[roles]`.
 `flow stats` shows, per reviewer and model, how many findings were fixed
 versus disputed, so you can pick reviewers on evidence from your own code.
+
+## Ticket fetchers
+
+Built in: `acli` (Jira). Add another the same way as an agent - anything that
+takes a key and prints the ticket works, including a script wrapping one call
+to Glean, an internal API, or an MCP tool (flow only ever shells out to it,
+once, before any agent starts):
+
+```toml
+ticket_prefer = ["glean", "acli"]
+
+[tickets.glean]
+cmd = "glean search --format md {key}"
+```
+
+Use one for a single run with `flow ticket --with NAME` or `flow start KEY --with NAME`.
 
 ## Prompts
 

@@ -46,7 +46,9 @@ several tickets at once, in separate clones of the same repos.
 - Helpers: `git()`, `repo_root()`, TOML writing, config loading.
 - Tasks: `find()`/`resolve()` (key, alias, branch, then substring; never
   guesses on ambiguity), `current()` (task linked into the clone),
-  `link_repo()`, `fetch_ticket()`.
+  `link_repo()`, `repo_fingerprint()` (blocks resuming a key in an unrelated
+  repo), `fetch_ticket()` and its `ticket_fetchers()`/`pick_ticket_fetcher()`
+  (`[tickets.*]` config, same pick-from-`prefer` pattern as agents).
 - Plan parsing and diffs: `plan_files()`, `plan_steps()`, `in_plan()`,
   `merge_base()`, `diff_with_new_files()`.
 - Tracker: `compute()` (stages, statuses, next step), `render()`,
