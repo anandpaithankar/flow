@@ -23,6 +23,8 @@ git-ignored `.flow` folder. flow only commits when you run `flow accept`
                             open the assigned agent on that stage
   flow pr                   independent review in an isolated checkout + PR description
   flow review               second model reviews the plan, or the code if changed
+  flow {plan|review|fix|deslop|defend|pr} view
+                            print that stage's saved Markdown artifact
   flow stats                how often each reviewer's findings were acted on
   flow check                tests + nothing from .flow is staged
   flow ticket               re-fetch the ticket
@@ -1741,6 +1743,30 @@ def tool_version(spec: dict) -> str:
         return "?"
 
 
+def cmd_view_stage(args):
+    """Print the current ticket's saved Markdown artifact for a workflow stage."""
+    t, _ = current()
+    tdir = task_dir(t["key"])
+    stage = args.cmd
+    paths = {
+        "plan": (tdir / "plan.md", "plan"),
+        "deslop": (tdir / "deslop.md", "deslop report"),
+        "defend": (tdir / "defend.md", "defend report"),
+        "review": (tdir / "review.md", "review"),
+        "pr": (tdir / "pr.md", "PR review"),
+    }
+    if stage == "fix":
+        review, pr = tdir / "review.md", tdir / "pr.md"
+        path = pr if pr.exists() and (not review.exists() or pr.stat().st_mtime > review.stat().st_mtime) else review
+        label = "fix outcome"
+    else:
+        path, label = paths[stage]
+    if not path.exists():
+        die(f"no {label} artifact yet; run flow {stage} first")
+    print(f"{label}: {short(str(path))}\n")
+    print(path.read_text(errors="ignore").rstrip())
+
+
 def cmd_agents(args):
     table = agents()
     roles_for: dict[str, list[str]] = {}
@@ -1784,6 +1810,8 @@ def cmd_agents(args):
 
 def cmd_stage(args):
     """Open the agent assigned to a stage, interactively, with the stage prompt."""
+    if getattr(args, "action", None) == "view":
+        return cmd_view_stage(args)
     t, root = current()
     name, spec, reason = pick(args.cmd, args.with_)
     if not installed(spec):
@@ -1814,6 +1842,8 @@ def cmd_pr(args):
     that has no .flow folder and no session history. It sees only the ticket,
     the plan, and the committed diff, so it can't lean on the fix discussion.
     """
+    if getattr(args, "action", None) == "view":
+        return cmd_view_stage(args)
     t, root = current()
     name, spec, reason = pick("pr", args.with_)
     if not installed(spec):
@@ -1868,6 +1898,8 @@ def cmd_pr(args):
 
 
 def cmd_review(args):
+    if getattr(args, "action", None) == "view":
+        return cmd_view_stage(args)
     t, root = current()
     name, spec, reason = pick("review", args.with_)
     if not installed(spec):
@@ -2059,14 +2091,21 @@ def main() -> int:
                         ("defend", "be quizzed on the change by a skeptical reviewer"),
                         ("fix", "open the agent that applies review findings")]:
         p = sub.add_parser(stage, help=text)
+        if stage != "build":
+            p.add_argument("action", nargs="?", choices=("view",),
+                           help="print this stage's saved Markdown artifact")
         p.add_argument("--with", dest="with_", metavar="AGENT", help="use this agent this time")
         p.set_defaults(fn=cmd_stage)
 
     p = sub.add_parser("pr", help="independent review of the committed change + PR description")
+    p.add_argument("action", nargs="?", choices=("view",),
+                   help="print the saved PR review")
     p.add_argument("--with", dest="with_", metavar="AGENT", help="use this agent this time")
     p.set_defaults(fn=cmd_pr)
 
     p = sub.add_parser("review", help="second-model review of the plan or the code")
+    p.add_argument("action", nargs="?", choices=("view",),
+                   help="print the saved review")
     p.add_argument("--plan", action="store_true", help="review the plan even if code changed")
     p.add_argument("--with", dest="with_", metavar="AGENT", help="use this agent this time")
     p.set_defaults(fn=cmd_review)
