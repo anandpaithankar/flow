@@ -90,6 +90,10 @@ PROJ-123 (retry)  ~/src/repo-2 · feature/PROJ-123-retry
 `fs 123` (the shell function from `flow init`), by key, alias, branch name, or
 a unique fragment. `flow ls` lists everything.
 
+If a ticket's state gets broken (a bad plan, a stuck review, a stale link),
+`flow clear KEY` deletes its flow data entirely and unlinks every clone, so
+`flow start KEY` starts it clean.
+
 ## Agents and models
 
 Built in: `claude`, `codex`, `opencode`, `cursor`. `flow agents` shows what's

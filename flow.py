@@ -26,6 +26,7 @@ git-ignored `.flow` folder. flow only commits when you run `flow accept`
   flow stats                how often each reviewer's findings were acted on
   flow check                tests + nothing from .flow is staged
   flow ticket               re-fetch the ticket
+  flow clear PROJ-123       delete a ticket's flow data entirely, to reinit or fix issues
   flow prompt build         print a prompt for agents without slash commands
 
 Any stage command takes --with NAME to pick an agent for that run.
@@ -943,6 +944,31 @@ def cmd_path(args):
     print("\n".join(dirs) if args.all else dirs[0])
 
 
+def cmd_clear(args):
+    """Delete a ticket's flow data entirely: unlink every clone, then remove
+    ~/.flow/tasks/<KEY>. Use this to reinit a ticket from scratch or recover
+    from a broken plan/state - `flow start KEY` afterwards starts clean."""
+    t = resolve(args.key) if args.key else current()[0]
+    tdir = task_dir(t["key"])
+    links = [Path(d) / LINK for d in t.get("dirs", []) if (Path(d) / LINK).is_symlink()]
+
+    print(f"this permanently deletes {short(str(tdir))} (ticket, plan, reviews, history)")
+    if links:
+        print("and unlinks it from:")
+        for link in links:
+            print(f"  {short(str(link.parent))}")
+    if not args.yes:
+        if not sys.stdin.isatty():
+            die(f"refusing without confirmation; rerun with --yes to clear {t['key']}")
+        if input(f"type {t['key']} to confirm: ").strip() != t["key"]:
+            die("stopped: not confirmed")
+
+    for link in links:
+        link.unlink()
+    shutil.rmtree(tdir)
+    print(f"cleared {t['key']}")
+
+
 # --------------------------------------------------------------------------
 # Progress tracker. State is worked out from the files in .flow/ and from git,
 # so it stays right even when you run steps outside flow (slash commands,
@@ -1759,6 +1785,11 @@ def main() -> int:
     p.add_argument("key")
     p.add_argument("--all", action="store_true", help="every linked clone")
     p.set_defaults(fn=cmd_path)
+
+    p = sub.add_parser("clear", help="delete a ticket's flow data entirely, to reinit or fix issues")
+    p.add_argument("key", nargs="?", help="default: the ticket linked here")
+    p.add_argument("-y", "--yes", action="store_true", help="skip the confirmation prompt")
+    p.set_defaults(fn=cmd_clear)
 
     p = sub.add_parser("status", help="progress tracker for the ticket linked here")
     p.set_defaults(fn=cmd_status)
