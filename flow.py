@@ -149,12 +149,16 @@ PROMPT_FILES = {
 You are planning a change the way a staff engineer would: the plan must survive
 a skeptical review, and every claim in it must be checkable.
 
-## Evidence rule (applies to everything below)
-Label every statement about the system:
-- OBSERVED (path:line): you read it in the code, config, or tests.
-- INFERRED: a reasonable conclusion you did not directly confirm. Say what would confirm it.
+## Evidence and provenance rule (applies to every claim that drives the plan)
+- REQUESTED (ticket:section): required or explicitly out of scope in the ticket.
+- OBSERVED (path:line or command/result): directly verified in code, config,
+  tests, or recorded output.
+- INFERRED (from <facts>): a reasonable conclusion you did not directly
+  confirm. State what would confirm it.
 - UNKNOWN: you could not determine it. Ask me, or list it as an open question.
 Never present an inference as a fact. "I don't know" is an acceptable answer.
+Use these labels for design choices, scope, compatibility, risk, and test
+claims; do not make the plan unreadable by labeling routine prose.
 
 ## 1. Understand the ask
 Read .flow/ticket.md (if missing, ask me to paste the ticket). In chat, restate:
@@ -166,8 +170,8 @@ answer you'd assume if I don't reply. Wait for my answers before planning.
 
 ## 2. Investigate
 Trace the real code paths the change touches: entry points, callers, data
-written or read, and tests that cover them today. Find existing helpers and
-conventions to reuse, with two examples of the pattern you'll follow.
+written or read, and tests that cover them today. When introducing a helper,
+abstraction, or pattern, find one relevant existing precedent to reuse.
 
 ## 3. Propose (in chat)
 - Approach, and why it is the simplest one that meets the acceptance criteria.
@@ -193,12 +197,15 @@ When I accept, write .flow/plan.md with exactly these headings (tools parse them
 Files: <n> · New abstractions: none | <list> · New dependencies: none | <list>
 Public API or schema changes: none | <list>
 ## Steps
-- [ ] 1. <small step> - proven by: <test or check>
+- [ ] P1. <small step> - proven by: <test, check, or other verification>
+## Decisions
+- D1. <decision and why> - REQUESTED / OBSERVED / INFERRED / UNKNOWN
 ## Assumptions
-- OBSERVED (path:line) / INFERRED / UNKNOWN: <statement>
+- A1. REQUESTED (ticket:section) / OBSERVED (path:line) / INFERRED (from facts) / UNKNOWN: <statement>
 ## Risks
 ## Alternatives rejected
 ## Test strategy
+- <acceptance criterion> → P1 → <changed behavior or symbol> → <test or verification> → <evidence expected>
 ## Out of scope
 
 I won't edit this file. Keep it accurate yourself as things change.
@@ -217,14 +224,17 @@ staff engineer: small, verified, explainable changes.
   that pattern.
 
 ## While editing
-- If the step changes behavior, write or extend a test first, run it, and
-  confirm it fails for the reason you expect.
-- Write the minimum code that makes it pass. No speculative error handling,
-  logging, config, abstractions, comments that restate code, or refactors.
+- If the step changes behavior and it is feasible to test locally, write or
+  extend a behavioral test first, run it, and confirm it fails for the reason
+  you expect. Otherwise, state why and identify the strongest available
+  verification.
+- Write the minimum code that makes it pass. Do not add error handling,
+  logging, config, abstractions, restating comments, or refactors unless the
+  ticket, a relevant failure mode, or repository precedent requires them.
 - Don't change public interfaces, schemas, or files outside the plan unless the
   step says so. If you need to, stop and ask; if I agree, update plan.md first.
-- If a test fails, fix the code, not the test. Only change a test if the plan
-  says the behavior should change, and say so.
+- Do not weaken a valid test to make it pass. Correct a faulty test only with
+  evidence; otherwise change it only when the plan changes behavior, and say so.
 
 ## Stop instead of improvising when
 - the code doesn't match what the plan assumed
@@ -234,20 +244,23 @@ staff engineer: small, verified, explainable changes.
 Report what you found and propose options.
 
 ## Before reporting
-1. Prove it works against the real artifact, not a proxy: run the feature or
-   the case this step is about and read the actual output. A green test suite
-   or "it compiles" is not proof by itself if you haven't also seen the
-   behavior happen.
+1. When it is safe and practical, prove it against the real artifact rather
+   than a proxy: run the feature or case this step is about and read the actual
+   output. A green test suite or "it compiles" is not proof by itself if you
+   have not also seen the behavior happen. If this is not practical, state why
+   and identify the strongest substitute evidence.
 2. Run the tests (and lint/type checks if the repo has them). Show the command
    and the result.
 3. Read your own diff as a reviewer would. Delete anything you can't justify.
 4. Tick the step's checkbox in plan.md; update plan.md if reality differed.
 
 ## Report
+- Plan item: P<n>; changed symbols or behavior: <list>.
 - Files changed, with one line per change saying why it exists.
 - Evidence: what you ran to see the real behavior, plus the test command and
   result.
-- Deviations from the plan, and any new assumptions (OBSERVED / INFERRED).
+- Deviations from the plan, and any new REQUESTED / OBSERVED / INFERRED /
+  UNKNOWN assumptions.
 Then stop. Don't commit: I review your diff and accept it by committing
 (`flow accept`). I'll tell you when to continue with the next step.
 """,
@@ -275,7 +288,7 @@ you did not write it.
    - tests that duplicate each other or only test the framework
 
 3. List candidates in a numbered table:
-   # | path:line | what | why it's unneeded (evidence) | delete / simplify / inline
+   # | path:line | related P<n> or unexplained | what | why it's unneeded (evidence) | delete / simplify / inline
    No style preferences. Be conservative: if removing something could change
    behavior, say so and mark it "keep unless you confirm".
 
@@ -315,10 +328,11 @@ For each finding, in order of severity:
 Rules: don't bundle unrelated improvements; stay inside the plan's files
 (ask me first otherwise); if a fix changes the approach, update .flow/plan.md.
 
-Before summarizing, prove each fix against the real artifact - run the
-reproduction or the feature and read the actual output, not just the test
-suite - then run the tests and show the result. Summarize each finding as
-fixed / disputed (reason) / skipped / question (what you found). Don't commit.
+Before summarizing, when safe and practical, prove each fix against the real
+artifact: run the reproduction or feature and read the actual output, not just
+the test suite. Otherwise state why and give the strongest substitute evidence.
+Then run the tests and show the result. Summarize each finding as fixed /
+disputed (reason) / skipped / question (what you found). Don't commit.
 
 Finally, append the counts to the end of .flow/review.md exactly like this:
 ## Outcome
@@ -338,7 +352,8 @@ matters more than politeness.
    if present. Then read the change against the base branch (`flow base`
    prints it): git diff $(git merge-base HEAD $(flow base))
 
-2. Prepare 8-12 questions, weighted to the riskiest parts:
+2. Prepare 8-12 questions, weighted to the riskiest parts. For each question,
+   cite the relevant P<n>, D<n>, A<n>, or a specific unexplained hunk:
    - why a specific line or hunk exists
    - what happens on an edge case, error, or concurrent access
    - why this approach over the alternatives in the plan
@@ -404,7 +419,9 @@ One finding per line:
 - Why this approach (only as stated in the ticket or plan; otherwise TODO)
 - What changed, in suggested reading order
 - Risks, rollout, rollback (TODO where the plan doesn't say)
-- Testing: the tests added or changed in the diff, and the commands to run them
+- Testing observed: recorded results, or "not provided"
+- Suggested verification: the tests added or changed in the diff, and commands
+  a reviewer can run
 - Where reviewers should focus: the riskiest parts, including your findings
 Never invent a reason. Write TODO for the author to fill in.
 """,
@@ -426,7 +443,8 @@ Check:
   rollback. What is unaccounted for?
 - Failure modes that apply here: concurrency, retries/idempotency, partial
   failure, security/privacy, hot-path performance.
-- Is each step small, ordered correctly, and proven by a test?
+- Is each step small, ordered correctly, and proven by a suitable verification
+  method (test, static check, migration check, or manual proof)?
 - Should this be split into separate PRs?
 - Does the Expected scope add abstractions, dependencies, or API changes the
   ticket doesn't need?
@@ -445,8 +463,12 @@ Levels:
   author, and say what you searched.
 - Nit: optional polish. At most 5.
 
+First provide a concise reconciliation:
+- Each acceptance criterion → P<n> → planned verification: covered / partial / missing.
+- Each D<n> and A<n>: verified / unsupported / could not verify, with evidence.
+
 Each finding on its own line, most important first:
-[Important|Question|Nit] <plan section> - issue - evidence (path:line) - suggestion
+[Important|Question|Nit] <plan section> - observed evidence - inferred impact (confidence if uncertain) - suggestion
 
 End with a verdict: APPROVE, APPROVE WITH CHANGES, or REWORK, and one sentence why.
 """,
@@ -464,6 +486,13 @@ supports it. No generic advice ("consider dependency injection").
 For every bug, describe the concrete scenario: the input or sequence of
 events, and what goes wrong. If you're unsure, give your confidence rather
 than stating it as fact.
+
+Before findings, provide a concise reconciliation:
+- Plan coverage: for each P<n>, list changed symbols/files, associated tests or
+  verification, and status: covered / partial / missing.
+- Diff coverage: for each meaningful changed hunk or file, link P<n>, D<n>, or
+  A<n> and label the relationship explicit / inferred / unexplained.
+- List unimplemented plan items and unexplained changes, or say "none".
 
 Passes, in priority order:
 1. [Bug] correctness: logic errors, edge cases (empty, null, boundaries,
@@ -489,8 +518,9 @@ Levels:
 - Nit: optional polish. At most 5.
 
 Each finding on its own line:
-[Important|Question|Nit] [tag] path:line - issue - scenario/evidence - fix / delete / keep because
-Skip anything a linter catches.
+[Important|Question|Nit] [tag] path:line - observed evidence - inferred impact (confidence if uncertain) - fix / delete / keep because
+Do not duplicate purely stylistic linter findings; retain anything with
+behavioral, security, scope, or design significance.
 
 End with a verdict: APPROVE, APPROVE WITH CHANGES, or REWORK, and one sentence why.
 """,
