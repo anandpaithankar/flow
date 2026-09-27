@@ -946,27 +946,41 @@ def cmd_path(args):
 
 def cmd_clear(args):
     """Delete a ticket's flow data entirely: unlink every clone, then remove
-    ~/.flow/tasks/<KEY>. Use this to reinit a ticket from scratch or recover
-    from a broken plan/state - `flow start KEY` afterwards starts clean."""
-    t = resolve(args.key) if args.key else current()[0]
-    tdir = task_dir(t["key"])
-    links = [Path(d) / LINK for d in t.get("dirs", []) if (Path(d) / LINK).is_symlink()]
+    ~/.flow/tasks/<KEY>. Use this to reinit a ticket from scratch, recover
+    from a broken plan/state, or remove a dangling .flow link whose task
+    directory is already gone - `flow start KEY` afterwards starts clean."""
+    if args.key:
+        key = resolve(args.key)["key"]
+    else:
+        root = repo_root() or die("run this inside a git clone, or: flow clear KEY")
+        link = root / LINK
+        if not link.is_symlink():
+            die("no ticket linked here (flow start KEY, or: flow clear KEY)")
+        key = Path(os.readlink(link)).name
 
-    print(f"this permanently deletes {short(str(tdir))} (ticket, plan, reviews, history)")
+    tdir = task_dir(key)
+    t = load_task(key) if (tdir / "task.toml").exists() else {"dirs": []}
+    links = {Path(d) / LINK for d in t.get("dirs", []) if (Path(d) / LINK).is_symlink()}
+    if not args.key:
+        links.add(link)   # the dangling link itself, even if not recorded in dirs
+
+    if tdir.exists():
+        print(f"this permanently deletes {short(str(tdir))} (ticket, plan, reviews, history)")
     if links:
-        print("and unlinks it from:")
-        for link in links:
-            print(f"  {short(str(link.parent))}")
+        print("and unlinks it from:" if tdir.exists() else "removes the dangling link at:")
+        for l in sorted(links):
+            print(f"  {short(str(l.parent))}")
     if not args.yes:
         if not sys.stdin.isatty():
-            die(f"refusing without confirmation; rerun with --yes to clear {t['key']}")
-        if input(f"type {t['key']} to confirm: ").strip() != t["key"]:
+            die(f"refusing without confirmation; rerun with --yes to clear {key}")
+        if input(f"type {key} to confirm: ").strip() != key:
             die("stopped: not confirmed")
 
-    for link in links:
-        link.unlink()
-    shutil.rmtree(tdir)
-    print(f"cleared {t['key']}")
+    for l in links:
+        l.unlink()
+    if tdir.exists():
+        shutil.rmtree(tdir)
+    print(f"cleared {key}")
 
 
 # --------------------------------------------------------------------------
