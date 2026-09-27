@@ -1329,16 +1329,24 @@ def render(state: dict, color: bool) -> str:
     return "\n".join(out)
 
 
-def show_tracker(t: dict, root: Path, header: bool = True) -> dict:
+def tracker_text(t: dict, root: Path, header: bool = True) -> tuple[str, dict]:
     state = compute(t, root)
     save_state(t, state)
     tty = sys.stdout.isatty()
+    lines = []
     if header:
         c = colors(tty)
         alias = f" ({', '.join(t['aliases'])})" if t.get("aliases") else ""
-        print(f"{c['bold']}{t['key']}{alias}{c['reset']}  {c['dim']}{short(str(root))} · "
-              f"{current_branch(root) or 'detached'}{c['reset']}\n")
-    print(render(state, tty))
+        lines.append(f"{c['bold']}{t['key']}{alias}{c['reset']}  {c['dim']}{short(str(root))} · "
+                     f"{current_branch(root) or 'detached'}{c['reset']}")
+        lines.append("")
+    lines.append(render(state, tty))
+    return "\n".join(lines), state
+
+
+def show_tracker(t: dict, root: Path, header: bool = True) -> dict:
+    text, state = tracker_text(t, root, header)
+    print(text)
     return state
 
 
@@ -1546,12 +1554,30 @@ def cmd_statusline(args):
 
 
 def cmd_watch(args):
-    """Live tracker for a side pane."""
+    """Live tracker for a side pane.
+
+    Redraws by moving the cursor up over exactly what it printed last time
+    and clearing those lines, rather than a full-screen clear (`\\x1b[2J`):
+    cursor-up and erase-line are the most universally honored escape codes,
+    where a full-screen clear is inconsistently handled by some embedded
+    terminal panes, leaving stale frames stacked one after another instead
+    of updating in place."""
+    tty = sys.stdout.isatty()
+    printed = 0
     try:
         while True:
             t, root = current()
-            sys.stdout.write("\x1b[2J\x1b[H")
-            show_tracker(t, root)
+            frame = tracker_text(t, root)[0].split("\n")
+            if tty:
+                if printed:
+                    sys.stdout.write(f"\x1b[{printed}A")
+                for line in frame:
+                    sys.stdout.write("\x1b[2K" + line + "\n")
+                if len(frame) < printed:
+                    sys.stdout.write("\x1b[J")   # frame shrank: erase the leftover tail
+                printed = len(frame)
+            else:                                # not a real terminal: can't redraw in place
+                print("\n".join(frame) + "\n" + "-" * 20)
             sys.stdout.flush()
             time.sleep(args.interval)
     except KeyboardInterrupt:
