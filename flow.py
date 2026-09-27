@@ -1553,15 +1553,20 @@ def cmd_statusline(args):
     return 0
 
 
+def rows_used(lines: list[str], cols: int) -> int:
+    """Terminal rows these lines occupy, accounting for wrapping: a line
+    longer than the terminal is wide takes more than one row."""
+    return sum(max(1, -(-len(ANSI.sub("", l)) // cols)) for l in lines)
+
+
 def cmd_watch(args):
     """Live tracker for a side pane.
 
-    Redraws by moving the cursor up over exactly what it printed last time
-    and clearing those lines, rather than a full-screen clear (`\\x1b[2J`):
-    cursor-up and erase-line are the most universally honored escape codes,
-    where a full-screen clear is inconsistently handled by some embedded
-    terminal panes, leaving stale frames stacked one after another instead
-    of updating in place."""
+    Redraws by moving the cursor up over exactly the terminal ROWS the last
+    frame used (not the number of text lines - a side pane is narrow enough
+    that lines routinely wrap into more than one row, which threw off a
+    naive line count and left the redraw landing in the wrong place), then
+    erasing everything below that point and printing the new frame fresh."""
     tty = sys.stdout.isatty()
     printed = 0
     try:
@@ -1569,13 +1574,11 @@ def cmd_watch(args):
             t, root = current()
             frame = tracker_text(t, root)[0].split("\n")
             if tty:
+                cols = max(1, shutil.get_terminal_size(fallback=(80, 24)).columns)
                 if printed:
-                    sys.stdout.write(f"\x1b[{printed}A")
-                for line in frame:
-                    sys.stdout.write("\x1b[2K" + line + "\n")
-                if len(frame) < printed:
-                    sys.stdout.write("\x1b[J")   # frame shrank: erase the leftover tail
-                printed = len(frame)
+                    sys.stdout.write(f"\x1b[{printed}A\x1b[J")
+                sys.stdout.write("\n".join(frame) + "\n")
+                printed = rows_used(frame, cols)
             else:                                # not a real terminal: can't redraw in place
                 print("\n".join(frame) + "\n" + "-" * 20)
             sys.stdout.flush()
