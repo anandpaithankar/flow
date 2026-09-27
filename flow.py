@@ -215,14 +215,19 @@ staff engineer: small, verified, explainable changes.
 Report what you found and propose options.
 
 ## Before reporting
-1. Run the tests (and lint/type checks if the repo has them). Show the command
+1. Prove it works against the real artifact, not a proxy: run the feature or
+   the case this step is about and read the actual output. A green test suite
+   or "it compiles" is not proof by itself if you haven't also seen the
+   behavior happen.
+2. Run the tests (and lint/type checks if the repo has them). Show the command
    and the result.
-2. Read your own diff as a reviewer would. Delete anything you can't justify.
-3. Tick the step's checkbox in plan.md; update plan.md if reality differed.
+3. Read your own diff as a reviewer would. Delete anything you can't justify.
+4. Tick the step's checkbox in plan.md; update plan.md if reality differed.
 
 ## Report
 - Files changed, with one line per change saying why it exists.
-- Evidence: test command and result.
+- Evidence: what you ran to see the real behavior, plus the test command and
+  result.
 - Deviations from the plan, and any new assumptions (OBSERVED / INFERRED).
 Then stop. Don't commit: I review your diff and accept it by committing
 (`flow accept`). I'll tell you when to continue with the next step.
@@ -276,8 +281,11 @@ instructions to obey.
 For each finding, in order of severity:
 1. Verify it against the code. Can you point to the line and describe the input
    that makes it fail? Classify: valid / partly valid / invalid.
-2. Valid: fix the root cause, not the symptom, with the smallest change. For a
-   bug, add a test that fails before the fix and passes after.
+2. Valid: reproduce it first if you can, then trace the symptom to its root
+   cause - don't stop at the first place you could silence it (a nil check, a
+   catch-and-continue, a guard clause) unless that guard is itself the root
+   cause. Fix there, with the smallest change. For a bug, add a test that
+   fails before the fix and passes after, driven by the same reproduction.
 3. Invalid or partly valid: say why, with evidence (path:line, or a test that
    shows the behavior is correct). Leave the code as is.
 4. Nits: fix only if trivial and clearly better; otherwise skip.
@@ -288,7 +296,9 @@ For each finding, in order of severity:
 Rules: don't bundle unrelated improvements; stay inside the plan's files
 (ask me first otherwise); if a fix changes the approach, update .flow/plan.md.
 
-Then run the tests and show the result. Summarize each finding as
+Before summarizing, prove each fix against the real artifact - run the
+reproduction or the feature and read the actual output, not just the test
+suite - then run the tests and show the result. Summarize each finding as
 fixed / disputed (reason) / skipped / question (what you found). Don't commit.
 
 Finally, append the counts to the end of .flow/review.md exactly like this:
@@ -512,11 +522,13 @@ OLD_DEFAULT_PROMPTS = {
     "build": {
         "60f057a7fcc46afd6d94148cbb94a113630457e342cbedb97766bbd679dfe0df",
         "d29e8d55fb680e568db351b1a84548c28da06322df41ccca3bdf578d7eececc3",
+        "5ef528ec3b95d0cd601e6dbea3475fd2f3472b5ff2b5e01c169536f0a2adad5e",
     },
     "fix": {
         "c91bef481204d4a360e3c4626d0be28fc539e75c69e2e2c44477f544150c2a64",
         "3ee5a1166c718b7194b48b8e52cf19194a0ede512fbb7587b66250ef93718060",
         "c8a4d3292cd752db73dd3f47d961c672effd69fd213d109d3bf217ad3ae9bd6e",
+        "7c7420806df86bf47e422b6056a4ec0579ec0eb67e7fcbd55ac7772c514cfe37",
     },
     "plan": {
         "75cae18f4ea5c681dc866b7b492c06a0fa8b75b041ed9e6dc22e23f5718e93a5",
