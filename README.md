@@ -61,7 +61,7 @@ Or step by step:
 | `flow plan` | Agent plans in plan mode; every claim labeled OBSERVED / INFERRED / UNKNOWN |
 | `flow review` | Second model reviews the plan (before code) or the code (after) |
 | `flow build` | One plan step, test first; the agent stops for you |
-| `flow diff` | What's waiting for your accept, marked against the plan |
+| `flow diff` | What's waiting for your accept: per file, in/out of plan, +/- lines, and why |
 | `flow accept` | Tests, scope check, then *you* commit: that's acceptance |
 | `flow deslop` | Fresh eyes list code the ticket doesn't need; you pick what goes |
 | `flow fix` | Builder verifies review findings; fixes or disputes with evidence |
@@ -84,6 +84,26 @@ PROJ-123 (retry)  ~/src/repo-2 · feature/PROJ-123-retry
    ...
  Next: flow accept   review the diff and commit it (step 3 done, not accepted yet)
 ```
+
+`flow diff` (and `flow accept`) don't just run `git diff`: each file is marked
+against the plan (`✓` in scope, `!` not), annotated with the reason the plan
+gave for touching it, and totaled in +/- lines next to the plan's stated
+`Expected scope` - so oversized-vs-planned is visible at a glance, and "why
+was this file touched" doesn't require re-reading the plan separately:
+
+```
+expected: Files: 2 · New abstractions: none · New dependencies: none
+
+  ✓ M f.py  +12 -3  why: add retry logic for flaky network calls
+  ✓ M g.py  +4 -0   why: update caller to use the new retry wrapper
+  ! ? notes.txt  (new, untracked)
+
+  +16 -3
+```
+
+For the line-by-line diff itself, `diff_cmd` still runs after that summary -
+point it at `delta` or `difftastic` for syntax highlighting and a side-by-side
+view instead of plain `git diff` (see `diff_cmd` in `config.toml`).
 
 ## Several tickets, several clones
 

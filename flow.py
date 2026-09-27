@@ -823,6 +823,39 @@ def plan_files(text: str) -> list[str]:
     return files
 
 
+def plan_file_reasons(text: str) -> dict[str, str]:
+    """Path -> stated reason, from '## Files that change' bullets shaped like
+    `path` - why this file must change."""
+    reasons, inside = {}, False
+    for line in text.splitlines():
+        if line.startswith("#"):
+            inside = "files" in line.lower()
+            continue
+        s = line.strip()
+        if not inside or not s.startswith(("-", "*")):
+            continue
+        m = re.match(r"[-*]\s*`([^`]+)`\s*-\s*(.+)", s)
+        if m:
+            reasons[m.group(1).strip().removeprefix("./")] = m.group(2).strip()
+    return reasons
+
+
+def plan_expected_scope(text: str) -> str:
+    """The raw text under '## Expected scope', for comparison against the
+    actual diff - not parsed further, just shown next to it."""
+    lines = text.splitlines()
+    for i, line in enumerate(lines):
+        if line.startswith("#") and "expected scope" in line.lower():
+            body = []
+            for l in lines[i + 1:]:
+                if l.startswith("#"):
+                    break
+                if l.strip():
+                    body.append(l.strip())
+            return "  ".join(body)
+    return ""
+
+
 def plan_steps(text: str) -> tuple[int, int]:
     done = len(re.findall(r"^\s*[-*] \[[xX]\]", text, re.M))
     todo = len(re.findall(r"^\s*[-*] \[ \]", text, re.M))
@@ -864,6 +897,43 @@ def diff_with_new_files(root: Path, mb: str) -> str:
         except OSError:
             pass
     return "\n".join(parts).strip()
+
+
+def diff_summary(root: Path, rng: str, files: list[str], reasons: dict[str, str],
+                 c: dict) -> tuple[int, int] | None:
+    """Print each changed file marked against the plan, with its +/- line
+    count and stated reason if the plan gives one. Returns (adds, dels), or
+    None if there was nothing to show."""
+    stat = {}
+    for line in git("diff", "--numstat", rng, cwd=root).splitlines():
+        a, d, f = line.split("\t", 2)
+        stat[f.split(" => ")[-1].rstrip("}")] = (a, d)
+    rows = [l.split("\t") for l in git("diff", "--name-status", rng, cwd=root).splitlines()]
+    new = untracked(root)
+    if not rows and not new:
+        print("no changes")
+        return None
+    adds = dels = 0
+
+    def mark(f):
+        if not files:
+            return " "
+        return f"{c['green']}✓{c['reset']}" if in_plan(f, files) else f"{c['yellow']}!{c['reset']}"
+
+    def why(f):
+        return f"  {c['dim']}why: {reasons[f]}{c['reset']}" if f in reasons else ""
+    for r in rows:
+        code, f = r[0][0], r[-1]
+        a, d = stat.get(f, ("-", "-"))
+        adds += int(a) if a.isdigit() else 0
+        dels += int(d) if d.isdigit() else 0
+        print(f"  {mark(f)} {code} {f}  {c['dim']}+{a} -{d}{c['reset']}{why(f)}")
+    for f in new:
+        print(f"  {mark(f)} ? {f}  {c['dim']}(new, untracked){c['reset']}{why(f)}")
+    print(f"\n  +{adds} -{dels}" + (f"   {c['yellow']}!{c['reset']} = not in the plan"
+                                  if files and any(not in_plan(r[-1], files) for r in rows)
+                                  else ""))
+    return adds, dels
 
 
 # --------------------------------------------------------------------------
@@ -1309,9 +1379,14 @@ def cmd_accept(args):
     if not git("status", "--porcelain", cwd=root):
         print("nothing to accept: no uncommitted changes")
         return 0
-    print(git("-c", "color.status=always", "status", "--short", cwd=root) if sys.stdout.isatty()
-          else git("status", "--short", cwd=root))
-    files = plan_files(read_plan(t))
+    plan = read_plan(t)
+    files = plan_files(plan)
+    c = colors(sys.stdout.isatty())
+    scope = plan_expected_scope(plan)
+    if scope:
+        print(f"{c['dim']}expected: {scope}{c['reset']}\n")
+    diff_summary(root, "HEAD", files, plan_file_reasons(plan), c)
+    print()
     raw = subprocess.run(["git", "status", "--porcelain"], cwd=root,
                          capture_output=True, text=True).stdout.splitlines()
     entries = [(l[:2], l[3:].split(" -> ")[-1]) for l in raw if l.strip()]
@@ -1403,34 +1478,15 @@ def cmd_diff(args):
     plan = read_plan(t)
     done, total = plan_steps(plan)
     files = plan_files(plan)
+    reasons = plan_file_reasons(plan)
     c = colors(sys.stdout.isatty())
-    print(f"{c['bold']}{t['key']}{c['reset']}  step {done}/{total}  ·  {what}\n")
-    stat = {}
-    for line in git("diff", "--numstat", rng, cwd=root).splitlines():
-        a, d, f = line.split("\t", 2)
-        stat[f.split(" => ")[-1].rstrip("}")] = (a, d)
-    rows = [l.split("\t") for l in git("diff", "--name-status", rng, cwd=root).splitlines()]
-    new = untracked(root)
-    if not rows and not new:
-        print("no changes")
+    print(f"{c['bold']}{t['key']}{c['reset']}  step {done}/{total}  ·  {what}")
+    scope = plan_expected_scope(plan)
+    if scope:
+        print(f"{c['dim']}expected: {scope}{c['reset']}")
+    print()
+    if diff_summary(root, rng, files, reasons, c) is None:
         return 0
-    adds = dels = 0
-
-    def mark(f):
-        if not files:
-            return " "
-        return f"{c['green']}✓{c['reset']}" if in_plan(f, files) else f"{c['yellow']}!{c['reset']}"
-    for r in rows:
-        code, f = r[0][0], r[-1]
-        a, d = stat.get(f, ("-", "-"))
-        adds += int(a) if a.isdigit() else 0
-        dels += int(d) if d.isdigit() else 0
-        print(f"  {mark(f)} {code} {f}  {c['dim']}+{a} -{d}{c['reset']}")
-    for f in new:
-        print(f"  {mark(f)} ? {f}  {c['dim']}(new, untracked){c['reset']}")
-    print(f"\n  +{adds} -{dels}" + (f"   {c['yellow']}!{c['reset']} = not in the plan"
-                                  if files and any(not in_plan(r[-1], files) for r in rows)
-                                  else ""))
     if args.stat:
         return 0
     cmd = load_config().get("diff_cmd") or "git diff {range}"

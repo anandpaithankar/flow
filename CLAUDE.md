@@ -49,8 +49,11 @@ several tickets at once, in separate clones of the same repos.
   `link_repo()`, `repo_fingerprint()` (blocks resuming a key in an unrelated
   repo), `fetch_ticket()` and its `ticket_fetchers()`/`pick_ticket_fetcher()`
   (`[tickets.*]` config, same pick-from-`prefer` pattern as agents).
-- Plan parsing and diffs: `plan_files()`, `plan_steps()`, `in_plan()`,
-  `merge_base()`, `diff_with_new_files()`.
+- Plan parsing and diffs: `plan_files()`, `plan_file_reasons()` (the `- why`
+  after each backticked path), `plan_expected_scope()`, `plan_steps()`,
+  `in_plan()`, `merge_base()`, `diff_with_new_files()`, `diff_summary()`
+  (shared by `cmd_diff()` and `cmd_accept()`: per-file plan mark, +/- lines,
+  reason).
 - Tracker: `compute()` (stages, statuses, next step), `render()`,
   `show_tracker()`, `cmd_next()`, `cmd_statusline()`, `cmd_watch()`.
 - Acceptance: `cmd_accept()` (scope gate, tests, commit), `add_to_plan()`,
@@ -63,7 +66,10 @@ several tickets at once, in separate clones of the same repos.
 ## Contracts the code parses (keep prompts and code in sync)
 
 - plan.md: a heading containing "files" (`## Files that change`) with
-  backticked paths as bullets; steps as `- [ ]` / `- [x]` checkboxes.
+  backticked paths as bullets, each followed by `- why this file must change`
+  (`plan_file_reasons()` parses it back out for `flow diff`/`flow accept`);
+  steps as `- [ ]` / `- [x]` checkboxes; a heading containing "expected scope"
+  whose body is shown verbatim next to the actual diff.
 - Review findings start with `[Important]`, `[Question]`, or `[Nit]`.
 - `fix` appends `## Outcome` with `fixed:`, `disputed:`, `skipped:`,
   `questions:` counts; `flow stats` and the tracker read them.
