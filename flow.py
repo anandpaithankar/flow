@@ -64,7 +64,21 @@ KEY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
 ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
 
 SLASH_COMMANDS = ("plan", "build", "deslop", "fix", "defend")   # run in your coding agent
+SLASH_DESCRIPTIONS = {
+    "plan": "Flow: investigate the ticket and propose an evidence-backed implementation plan.",
+    "build": "Flow: implement one approved plan step, verify it, then stop without committing.",
+    "deslop": "Flow: identify unnecessary change, then remove only what the user selects.",
+    "fix": "Flow: verify review findings and make the smallest justified fixes.",
+    "defend": "Flow: run a skeptical, interactive review of the change; do not edit code.",
+}
 MARKER = "<!-- flow v2 prompt: edit freely; `flow init --force` restores the default -->"
+BANNER = r"""
+  _____.__
+_/ ____\  |   ______  _  __
+\   __\|  |  /  _ \ \/ \/ /
+ |  |  |  |_(  <_> )     /
+ |__|  |____/\____/ \/\_/ |> |>
+""".strip("\n")
 
 # --------------------------------------------------------------------------
 # Defaults written by `flow init`. Edit the copies in ~/.flow afterwards.
@@ -982,6 +996,8 @@ def _blank_plan(text: str) -> bool:
 
 
 def cmd_init(args):
+    print(BANNER)
+    print()
     for d in (HOME, TASKS, PROMPTS):
         d.mkdir(parents=True, exist_ok=True)
     wrote = []
@@ -1025,7 +1041,7 @@ def cmd_init(args):
              "terminal instead. ")
     for name in SLASH_COMMANDS:
         p = cmds / f"flow-{name}.md"
-        body = (f"---\ndescription: flow {name}\n---\n{MARKER}\n"
+        body = (f"---\ndescription: {SLASH_DESCRIPTIONS[name]}\n---\n{MARKER}\n"
                 + (guard.format(name=name) if name in FRESH_EYES else "")
                 + f"Read {PROMPTS / (name + '.md')} and follow it exactly. "
                 "The ticket files are in .flow/ at the repo root.\n")
