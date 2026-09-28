@@ -156,6 +156,17 @@ review = "auto"
 # [agents.claude-skills]
 # base = "claude"
 # prompt_prefix = "Use your code-review skill for this. Report findings in the format below."
+#
+# Then use it:  flow review --with claude-skills   or   [roles] review = "claude-skills"
+#
+# Same idea to have Claude Code use a Superpowers skill during a specific
+# stage, e.g. test-driven development while building:
+# [agents.claude-tdd]
+# base = "claude"
+# prompt_prefix = "Use your test-driven-development skill for this step, but still follow the report format below."
+#
+# [roles]
+# build = "claude-tdd"
 """
 
 PROMPT_FILES = {
@@ -577,6 +588,16 @@ BUILTIN_AGENTS = {
     },
 }
 FRESH_EYES = ("deslop", "defend")   # judged better without the builder's context
+
+# Where each built-in agent keeps its config, checked only when its binary
+# isn't on PATH - a hint that it's installed (e.g. a GUI app) but not linked
+# into your shell, not a scan of the filesystem.
+AGENT_CONFIG_DIRS = {
+    "claude": ("~/.claude",),
+    "codex": ("~/.codex",),
+    "cursor": ("~/.cursor",),
+    "opencode": ("~/.config/opencode",),
+}
 ROLES = ("plan", "build", "deslop", "fix", "defend", "pr", "review")
 
 # Ticket fetchers: same pick-from-config pattern as agents, minus the
@@ -1450,7 +1471,7 @@ def cmd_accept(args):
         print(f"{c['dim']}expected: {scope}{c['reset']}\n")
     diff_summary(root, "HEAD", files, plan_file_reasons(plan), c)
     print()
-    raw = subprocess.run(["git", "status", "--porcelain"], cwd=root,
+    raw = subprocess.run(["git", "status", "--porcelain", "--untracked-files=all"], cwd=root,
                          capture_output=True, text=True).stdout.splitlines()
     entries = [(l[:2], l[3:].split(" -> ")[-1]) for l in raw if l.strip()]
     # New files the plan doesn't mention are often scratch: leave them out.
@@ -1683,6 +1704,16 @@ def installed(spec: dict) -> bool:
     return shutil.which(binary(spec)) is not None
 
 
+def config_hint(name: str) -> str:
+    """A known config dir for an agent that isn't on PATH - suggests it's
+    installed (e.g. a GUI app) but not linked into your shell."""
+    for d in AGENT_CONFIG_DIRS.get(name, ()):
+        p = Path(d).expanduser()
+        if p.exists():
+            return short(str(p))
+    return ""
+
+
 def family(name: str, spec: dict) -> str:
     """Model family: explicit, else the provider in 'provider/model', else unknown."""
     if spec.get("family"):
@@ -1797,7 +1828,12 @@ def cmd_agents(args):
     print("agents:")
     for name, spec in table.items():
         ok = installed(spec)
-        where = tool_version(spec) if ok else f"not installed ({binary(spec)})"
+        if ok:
+            where = tool_version(spec)
+        else:
+            hint = config_hint(name)
+            where = f"not installed ({binary(spec)})"
+            where += f" - found {hint}, not on PATH" if hint else ""
         fam = family(name, spec) or "unknown family"
         model = spec.get("model") or "default model"
         roles = ", ".join(roles_for.get(name, [])) or "-"
